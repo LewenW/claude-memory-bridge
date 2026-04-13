@@ -1,2 +1,2 @@
 """memory-bridge: Cross-project memory sharing for Claude."""
-__version__ = "0.1.0"
+__version__ = "0.1.1"

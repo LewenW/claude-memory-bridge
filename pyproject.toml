@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "claude-memory-bridge"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cross-project memory sharing for Claude Code and Cowork. Namespaces let projects share knowledge without polluting global scope."
 requires-python = ">=3.10"
 license = "MIT"
@@ -31,6 +31,7 @@ Issues = "https://github.com/LewenW/claude-memory-bridge/issues"
 
 [project.scripts]
 memory-bridge = "memory_bridge.server:main"
+claude-memory-bridge = "memory_bridge.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/memory_bridge"]
