@@ -17,8 +17,26 @@ from pathlib import Path
 
 PACKAGE_SRC = Path(__file__).resolve().parent.parent / "src"
 
+
+def _find_python() -> str:
+    """Find a stable Python path — avoid venv-specific executables."""
+    exe = sys.executable
+    # If inside a venv, prefer the base prefix Python
+    if hasattr(sys, "real_prefix") or (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    ):
+        candidates = [
+            shutil.which("python3"),
+            shutil.which("python"),
+        ]
+        for c in candidates:
+            if c and "venv" not in c and ".venv" not in c:
+                return c
+    return exe
+
+
 MCP_ENTRY = {
-    "command": sys.executable,
+    "command": _find_python(),
     "args": ["-m", "memory_bridge.server"],
     "env": {"PYTHONPATH": str(PACKAGE_SRC)},
 }

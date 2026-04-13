@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -30,11 +31,13 @@ from memory_bridge.store.base import MemoryStore
 
 def _memory_id(path: str | Path) -> str:
     rel = os.path.relpath(str(path), str(CLAUDE_HOME))
+    # Normalize to forward slashes so IDs are consistent across platforms
+    rel = rel.replace("\\", "/")
     return hashlib.sha256(rel.encode()).hexdigest()[:12]
 
 
-_FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
-_FM_KV = re.compile(r"^(\w[\w_]*):\s*(.+)$", re.MULTILINE)
+_FM_RE = re.compile(r"^---\s*\r?\n(.*?)\r?\n---\s*\r?\n", re.DOTALL)
+_FM_KV = re.compile(r"^(\w[\w_]*):\s*(.*)$", re.MULTILINE)
 
 
 def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -48,6 +51,9 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
 def _render_frontmatter(fm: dict[str, str], body: str) -> str:
     lines = ["---"]
     for k, v in fm.items():
+        v = str(v).replace("\n", " ").replace("\r", "")
+        if ":" in v or v.startswith('"') or v.startswith("'") or "---" in v:
+            v = '"' + v.replace('"', '\\"') + '"'
         lines.append(f"{k}: {v}")
     lines.append("---")
     lines.append("")
@@ -55,8 +61,26 @@ def _render_frontmatter(fm: dict[str, str], body: str) -> str:
     return "\n".join(lines)
 
 
+def _atomic_write(path: Path, content: str) -> None:
+    fd = tempfile.NamedTemporaryFile(
+        mode="w", dir=str(path.parent), suffix=".tmp",
+        delete=False, encoding="utf-8",
+    )
+    try:
+        fd.write(content)
+        fd.close()
+        os.replace(fd.name, str(path))
+    except BaseException:
+        fd.close()
+        Path(fd.name).unlink(missing_ok=True)
+        raise
+
+
 def _file_mtime(p: Path) -> datetime:
-    return datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
+    try:
+        return datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return datetime.now(tz=timezone.utc)
 
 
 def _project_readable_name(dir_name: str) -> str:
@@ -205,13 +229,19 @@ class FileSystemStore(MemoryStore):
     ) -> list[Memory]:
         if not mem_dir.is_dir():
             return []
-        return [
-            self._parse_memory_file(
-                f, source_project=source_project, namespace=namespace
-            )
-            for f in sorted(mem_dir.iterdir())
-            if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME
-        ]
+        results: list[Memory] = []
+        for f in sorted(mem_dir.iterdir()):
+            if f.suffix != ".md" or f.name == MEMORY_INDEX_FILENAME:
+                continue
+            try:
+                results.append(
+                    self._parse_memory_file(
+                        f, source_project=source_project, namespace=namespace
+                    )
+                )
+            except OSError:
+                continue
+        return results
 
     def read_project_memories(self, project_id: str) -> list[Memory]:
         return self._read_dir_memories(
@@ -219,9 +249,10 @@ class FileSystemStore(MemoryStore):
         )
 
     def read_shared_memories(self, namespace: str) -> list[Memory]:
-        return self._read_dir_memories(
-            SHARED_DIR / namespace, namespace=namespace
-        )
+        ns_dir = SHARED_DIR / namespace
+        if not ns_dir.resolve().is_relative_to(SHARED_DIR.resolve()):
+            return []
+        return self._read_dir_memories(ns_dir, namespace=namespace)
 
     def get_memory(self, memory_id: str) -> Memory | None:
         self._ensure_cache()
@@ -275,9 +306,7 @@ class FileSystemStore(MemoryStore):
         if memory.tags:
             fm["tags"] = ", ".join(memory.tags)
 
-        path.write_text(
-            _render_frontmatter(fm, memory.content), encoding="utf-8"
-        )
+        _atomic_write(path, _render_frontmatter(fm, memory.content))
 
         memory.file_path = str(path)
         memory.id = _memory_id(path)
@@ -294,13 +323,13 @@ class FileSystemStore(MemoryStore):
 
         if index.exists():
             existing = index.read_text(encoding="utf-8")
-            if slug in existing:
+            if f"]({slug})" in existing:
                 return
             text = existing.rstrip() + "\n" + entry + "\n"
         else:
             text = entry + "\n"
 
-        index.write_text(text, encoding="utf-8")
+        _atomic_write(index, text)
 
     def delete_memory(self, memory_id: str) -> bool:
         mem = self.get_memory(memory_id)
@@ -313,8 +342,9 @@ class FileSystemStore(MemoryStore):
         index = path.parent / MEMORY_INDEX_FILENAME
         if index.exists():
             lines = index.read_text(encoding="utf-8").splitlines()
-            lines = [l for l in lines if path.name not in l]
-            index.write_text("\n".join(lines) + "\n" if lines else "", encoding="utf-8")
+            marker = f"]({path.name})"
+            lines = [l for l in lines if marker not in l]
+            _atomic_write(index, "\n".join(lines) + "\n" if lines else "")
         self._invalidate_cache()
         return True
 
@@ -327,7 +357,8 @@ class FileSystemStore(MemoryStore):
         project: str | None = None,
         limit: int = 10,
     ) -> list[SearchResult]:
-        terms = [t.lower() for t in query.split() if len(t) >= 2]
+        terms = [re.sub(r"[^\w-]", "", t.lower()) for t in query.split() if len(t) >= 2]
+        terms = [t for t in terms if t]
         if not terms:
             return []
 
@@ -400,7 +431,7 @@ class FileSystemStore(MemoryStore):
                 line += f" — {desc}"
             entries.append(line)
         index_path = mem_dir / MEMORY_INDEX_FILENAME
-        index_path.write_text("\n".join(entries) + "\n" if entries else "", encoding="utf-8")
+        _atomic_write(index_path, "\n".join(entries[:200]) + "\n" if entries else "")
         return len(entries)
 
     # ── Internal ───────────────────────────────────────────────────────

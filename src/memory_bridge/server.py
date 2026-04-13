@@ -174,30 +174,38 @@ def sync_memory(
 
     all_projects: dict[str, str] = {}
     for p in _store.scan_projects():
-        all_projects[p.name] = p.id
+        # Only map name→id if unique; id→id is always safe
+        if p.name not in all_projects:
+            all_projects[p.name] = p.id
+        else:
+            all_projects[p.name] = "__ambiguous__"
         all_projects[p.id] = p.id
 
     results: list[dict] = []
     for target in targets:
         project_id = all_projects.get(target)
-        if not project_id:
-            results.append({"project": target, "status": "not_found"})
+        if not project_id or project_id == "__ambiguous__":
+            status = "ambiguous_name" if project_id == "__ambiguous__" else "not_found"
+            results.append({"project": target, "status": status})
             continue
 
-        mem = Memory(
-            id="",
-            title=title or "synced-memory",
-            content=content,
-            file_path="",
-            source_project=project_id,
-            tags=tag_list,
-            memory_type=memory_type,
-            description=description,
-            created_at=now,
-            updated_at=now,
-        )
-        written = _store.write_memory(mem)
-        results.append({"project": target, "status": "ok", "memory_id": written.id})
+        try:
+            mem = Memory(
+                id="",
+                title=title or "synced-memory",
+                content=content,
+                file_path="",
+                source_project=project_id,
+                tags=tag_list,
+                memory_type=memory_type,
+                description=description,
+                created_at=now,
+                updated_at=now,
+            )
+            written = _store.write_memory(mem)
+            results.append({"project": target, "status": "ok", "memory_id": written.id})
+        except OSError as e:
+            results.append({"project": target, "status": "error", "error": str(e)})
 
     return json.dumps(results, indent=2)
 
@@ -313,10 +321,14 @@ def manage_namespaces(
     if action in ("subscribe", "unsubscribe"):
         if not project:
             return "Error: 'project' is required for subscribe/unsubscribe."
+        matched = False
         for p in _store.scan_projects():
             if p.name == project or p.id == project:
                 project = p.id
+                matched = True
                 break
+        if not matched:
+            return f"Error: project '{project}' not found. Use the project's directory-based id for exact matching."
         try:
             if action == "subscribe":
                 ok = _ns.subscribe(namespace, project)

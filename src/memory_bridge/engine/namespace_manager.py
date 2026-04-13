@@ -3,12 +3,25 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 from memory_bridge.config import REGISTRY_FILE, SHARED_DIR
 from memory_bridge.models import NamespaceInfo
+
+
+_SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+
+
+def _validate_namespace(name: str) -> None:
+    if not _SAFE_NAME_RE.match(name):
+        raise ValueError(
+            f"Invalid namespace name '{name}'. "
+            "Use 1-64 alphanumeric chars, hyphens, or underscores."
+        )
 
 
 def _default_registry() -> dict:
@@ -18,7 +31,10 @@ def _default_registry() -> dict:
 class NamespaceManager:
     def _read(self) -> dict:
         if REGISTRY_FILE.exists():
-            return json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
+            try:
+                return json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                return _default_registry()
         return _default_registry()
 
     def _write(self, data: dict) -> None:
@@ -31,7 +47,7 @@ class NamespaceManager:
         try:
             json.dump(data, fd, indent=2, ensure_ascii=False)
             fd.close()
-            Path(fd.name).rename(REGISTRY_FILE)
+            os.replace(fd.name, str(REGISTRY_FILE))
         except BaseException:
             fd.close()
             Path(fd.name).unlink(missing_ok=True)
@@ -72,6 +88,7 @@ class NamespaceManager:
     # ── Mutations ──────────────────────────────────────────────────────
 
     def create(self, namespace: str, description: str = "", tags: list[str] | None = None) -> NamespaceInfo:
+        _validate_namespace(namespace)
         data = self._read()
         if namespace in data["namespaces"]:
             raise ValueError(f"Namespace '{namespace}' already exists")
