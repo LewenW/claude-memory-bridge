@@ -12,11 +12,38 @@ Project     ~/.claude/projects/<proj>/memory/*.md     (Claude native)
 
 ## Install
 
+### Claude Code (one command)
+
+```bash
+claude mcp add memory-bridge -- uvx claude-memory-bridge
+```
+
+Done. No clone, no config files.
+
+### Cowork Desktop
+
+Add to your config file (`Settings` > `Developer` > `Edit Config`):
+
+```json
+{
+  "mcpServers": {
+    "memory-bridge": {
+      "command": "uvx",
+      "args": ["claude-memory-bridge"]
+    }
+  }
+}
+```
+
+Then restart Cowork.
+
+### Manual install (advanced)
+
 ```bash
 git clone https://github.com/LewenW/claude-memory-bridge.git
 cd claude-memory-bridge
-pip install mcp
-python scripts/install.py    # auto-detects Cowork desktop + Claude Code CLI
+pip install -e .
+python scripts/install.py
 ```
 
 ## Tools
@@ -24,7 +51,7 @@ python scripts/install.py    # auto-detects Cowork desktop + Claude Code CLI
 | Tool | What it does |
 |------|-------------|
 | `search_memories` | Search across all projects and shared namespaces |
-| `promote_memory` | Move a memory from project → shared namespace |
+| `promote_memory` | Move a memory from project to shared namespace |
 | `sync_memory` | Copy a memory to specific projects |
 | `list_shared_memories` | Browse namespace contents |
 | `manage_namespaces` | Create, delete, subscribe, unsubscribe |
@@ -35,16 +62,17 @@ python scripts/install.py    # auto-detects Cowork desktop + Claude Code CLI
 In a Claude Code or Cowork session:
 
 ```
-/memory-bridge:namespaces
-# action=create, namespace=frontend, description="React conventions"
+# Create a namespace
+"Create a shared namespace called 'frontend' for React conventions"
 
-/memory-bridge:promote
-# content="Use pnpm, not npm", target_namespace=frontend
+# Share knowledge
+"Promote 'Use pnpm, not npm' to the frontend namespace"
 
-/memory-bridge:namespaces
-# action=subscribe, namespace=frontend, project=dashboard
+# Subscribe a project
+"Subscribe my dashboard project to the frontend namespace"
 
-/memory-bridge:search pnpm
+# Search across everything
+"Search memories for pnpm"
 ```
 
 ## Client compatibility
@@ -53,7 +81,7 @@ In a Claude Code or Cowork session:
 |--------|------|--------|
 | Claude Code (CLI) | Yes | Yes |
 | Cowork — Code mode | Yes | Yes |
-| Cowork — Cowork mode | :( | Yes mention "memory-bridge" or tool name |
+| Cowork — Cowork mode | :( | Yes — mention "memory-bridge" or tool name |
 
 Cowork mode loads the MCP tools but doesn't inject server `instructions`, so Claude won't use them unprompted. Workaround: say "use search_memories" or mention "memory-bridge". This will work automatically once Cowork supports MCP instructions.
 
@@ -68,9 +96,10 @@ Cowork mode loads the MCP tools but doesn't inject server `instructions`, so Cla
 ## Uninstall
 
 ```bash
-python scripts/install.py --check    # show current config
-python scripts/install.py --remove   # uninstall from all clients
+claude mcp remove memory-bridge    # Claude Code
 ```
+
+Or remove the `memory-bridge` entry from your Cowork config file.
 
 ## Project structure
 
