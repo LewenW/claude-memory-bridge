@@ -18,7 +18,7 @@ Project     ~/.claude/projects/<proj>/memory/*.md     (Claude native)
 claude mcp add memory-bridge -- uvx claude-memory-bridge
 ```
 
-Done. No clone, no config files.
+Done. No clone, no config files. Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
 ### Cowork Desktop
 
@@ -35,7 +35,7 @@ Add to your config file (`Settings` > `Developer` > `Edit Config`):
 }
 ```
 
-Then restart Cowork.
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Then restart Cowork.
 
 ### Manual install (advanced)
 
