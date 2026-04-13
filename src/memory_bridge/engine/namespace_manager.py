@@ -63,9 +63,12 @@ class NamespaceManager:
         result: list[NamespaceInfo] = []
         for name, ns in data["namespaces"].items():
             ns_dir = SHARED_DIR / name
-            mem_count = sum(
-                1 for f in ns_dir.iterdir() if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME
-            ) if ns_dir.is_dir() else 0
+            try:
+                mem_count = sum(
+                    1 for f in ns_dir.iterdir() if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME
+                ) if ns_dir.is_dir() else 0
+            except OSError:
+                mem_count = 0
             result.append(NamespaceInfo(
                 name=name,
                 description=ns.get("description", ""),

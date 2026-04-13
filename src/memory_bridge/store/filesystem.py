@@ -162,7 +162,7 @@ class FileSystemStore(MemoryStore):
         self._id_to_path: dict[str, str] = {}
         self._cache_built = False
 
-    def _ensure_cache(self) -> None:
+    def _ensure_cache(self, registered_namespaces: set[str] | None = None) -> None:
         if self._cache_built:
             return
         self._id_to_path.clear()
@@ -174,7 +174,7 @@ class FileSystemStore(MemoryStore):
                         self._id_to_path[_memory_id(f)] = str(f)
             except OSError:
                 continue
-        for ns_dir in self._namespace_dirs():
+        for ns_dir in self._namespace_dirs(registered=registered_namespaces):
             try:
                 for f in ns_dir.iterdir():
                     if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME:
@@ -191,8 +191,12 @@ class FileSystemStore(MemoryStore):
     def scan_projects(self) -> list[Project]:
         if not PROJECTS_DIR.is_dir():
             return []
+        try:
+            entries = sorted(PROJECTS_DIR.iterdir())
+        except OSError:
+            return []
         projects: list[Project] = []
-        for entry in sorted(PROJECTS_DIR.iterdir()):
+        for entry in entries:
             mem_dir = entry / "memory"
             if not mem_dir.is_dir():
                 continue
@@ -271,7 +275,9 @@ class FileSystemStore(MemoryStore):
             return []
         return self._read_dir_memories(ns_dir, namespace=namespace)
 
-    def get_memory(self, memory_id: str) -> Memory | None:
+    def get_memory(
+        self, memory_id: str, registered_namespaces: set[str] | None = None,
+    ) -> Memory | None:
         self._ensure_cache()
         path_str = self._id_to_path.get(memory_id)
         if not path_str:
@@ -291,6 +297,8 @@ class FileSystemStore(MemoryStore):
                 namespace = rel.parts[0]
             except ValueError:
                 pass
+        if namespace and registered_namespaces is not None and namespace not in registered_namespaces:
+            return None
         return self._parse_memory_file(
             path, source_project=source_project, namespace=namespace
         )
@@ -328,7 +336,11 @@ class FileSystemStore(MemoryStore):
         if memory.tags:
             fm["tags"] = ", ".join(memory.tags)
 
-        _atomic_write(path, _render_frontmatter(fm, memory.content))
+        try:
+            _atomic_write(path, _render_frontmatter(fm, memory.content))
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
 
         memory.file_path = str(path)
         memory.id = _memory_id(path)
@@ -346,6 +358,10 @@ class FileSystemStore(MemoryStore):
         if index.exists():
             existing = index.read_text(encoding="utf-8")
             if f"]({slug})" in existing:
+                return
+            lines = existing.rstrip().split("\n")
+            # Claude truncates MEMORY.md after 200 lines
+            if len(lines) >= 200:
                 return
             text = existing.rstrip() + "\n" + entry + "\n"
         else:
@@ -427,10 +443,13 @@ class FileSystemStore(MemoryStore):
         """
         index_path = mem_dir / MEMORY_INDEX_FILENAME
 
-        on_disk = {
-            f.name for f in mem_dir.iterdir()
-            if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME
-        } if mem_dir.is_dir() else set()
+        try:
+            on_disk = {
+                f.name for f in mem_dir.iterdir()
+                if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME
+            } if mem_dir.is_dir() else set()
+        except OSError:
+            on_disk = set()
 
         indexed: set[str] = set()
         if index_path.exists():
@@ -449,10 +468,17 @@ class FileSystemStore(MemoryStore):
         if not mem_dir.is_dir():
             return 0
         entries: list[str] = []
-        for f in sorted(mem_dir.iterdir()):
+        try:
+            files = sorted(mem_dir.iterdir())
+        except OSError:
+            return 0
+        for f in files:
             if f.suffix != ".md" or f.name == MEMORY_INDEX_FILENAME:
                 continue
-            fm, _ = _parse_frontmatter(f.read_text(encoding="utf-8", errors="replace"))
+            try:
+                fm, _ = _parse_frontmatter(f.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
             title = fm.get("name", f.stem)
             desc = fm.get("description", "")
             line = f"- [{title}]({f.name})"
@@ -469,11 +495,14 @@ class FileSystemStore(MemoryStore):
         """Return namespace directories. If registered is provided, only include those."""
         if not SHARED_DIR.is_dir():
             return []
-        dirs = [
-            d
-            for d in sorted(SHARED_DIR.iterdir())
-            if d.is_dir() and not d.name.startswith(".")
-        ]
+        try:
+            dirs = [
+                d
+                for d in sorted(SHARED_DIR.iterdir())
+                if d.is_dir() and not d.name.startswith(".")
+            ]
+        except OSError:
+            return []
         if registered is not None:
             dirs = [d for d in dirs if d.name in registered]
         return dirs

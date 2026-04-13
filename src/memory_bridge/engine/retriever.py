@@ -20,7 +20,7 @@ class Retriever:
         scope: str = "all",
         project: str | None = None,
         limit: int = 10,
-    ) -> list[SearchResult]:
+    ) -> tuple[list[SearchResult], list]:
         # Resolve project name once; also cache project list for format_results
         projects = self._store.scan_projects()
         if project:

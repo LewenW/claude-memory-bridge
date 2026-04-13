@@ -121,9 +121,11 @@ def list_shared_memories(namespace: Optional[str] = None) -> str:
         namespace: A specific namespace to list memories from.
     """
     if namespace:
+        if not _ns.exists(namespace):
+            return f"Namespace '{namespace}' does not exist."
         memories = _store.read_shared_memories(namespace)
         if not memories:
-            return f"Namespace '{namespace}' is empty or does not exist."
+            return f"Namespace '{namespace}' is empty."
         lines = [f"## Namespace: {namespace} ({len(memories)} memories)\n"]
         for m in memories:
             lines.append(f"- **{m.title}** (id=`{m.id}`)")
