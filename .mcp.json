@@ -1,0 +1,9 @@
+{
+  "memory-bridge": {
+    "command": "python",
+    "args": ["-m", "memory_bridge.server"],
+    "env": {
+      "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}/src"
+    }
+  }
+}

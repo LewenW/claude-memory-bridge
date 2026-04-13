@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "memory-bridge"
+version = "0.1.0"
+description = "Cross-project memory sharing for Claude Cowork and Claude Code"
+requires-python = ">=3.10"
+dependencies = ["mcp>=1.0.0"]
+
+[project.scripts]
+memory-bridge = "memory_bridge.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/memory_bridge"]
