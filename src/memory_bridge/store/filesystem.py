@@ -251,7 +251,11 @@ class FileSystemStore(MemoryStore):
         if not mem_dir.is_dir():
             return []
         results: list[Memory] = []
-        for f in sorted(mem_dir.iterdir()):
+        try:
+            files = sorted(mem_dir.iterdir())
+        except OSError:
+            return []
+        for f in files:
             if f.suffix != ".md" or f.name == MEMORY_INDEX_FILENAME:
                 continue
             try:
@@ -423,7 +427,8 @@ class FileSystemStore(MemoryStore):
             for ns_dir in self._namespace_dirs(registered=registered_namespaces):
                 candidates.extend(self.read_shared_memories(ns_dir.name))
         elif is_named_ns:
-            candidates.extend(self.read_shared_memories(scope))
+            if registered_namespaces is None or scope in registered_namespaces:
+                candidates.extend(self.read_shared_memories(scope))
 
         results: list[SearchResult] = []
         for mem in candidates:
