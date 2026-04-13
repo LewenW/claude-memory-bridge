@@ -111,18 +111,26 @@ def _project_readable_name(dir_name: str) -> str:
 # ── Scorer ─────────────────────────────────────────────────────────────────
 
 
-def _score_text(text: str, terms: list[str]) -> tuple[float, str]:
+def _score_text(
+    text: str,
+    terms: list[str],
+    patterns: list[re.Pattern] | None = None,
+) -> tuple[float, str]:
     text_lower = text.lower()
     words = text_lower.split()
     if not words:
         return 0.0, ""
 
-    # Word boundaries prevent 'npm' from matching inside 'pnpm'
+    if patterns is None:
+        patterns = [
+            re.compile(r"(?<![a-zA-Z0-9])" + re.escape(t) + r"(?![a-zA-Z0-9])")
+            for t in terms
+        ]
+
     hits = 0
     first_match_pos = -1
     first_match_term = ""
-    for t in terms:
-        pattern = re.compile(r"(?<![a-zA-Z0-9])" + re.escape(t) + r"(?![a-zA-Z0-9])")
+    for t, pattern in zip(terms, patterns):
         matches = list(pattern.finditer(text_lower))
         hits += len(matches)
         if matches and first_match_pos < 0:
@@ -160,13 +168,19 @@ class FileSystemStore(MemoryStore):
         self._id_to_path.clear()
         for proj in self.scan_projects():
             mem_dir = Path(proj.memory_dir)
-            for f in mem_dir.iterdir():
-                if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME:
-                    self._id_to_path[_memory_id(f)] = str(f)
+            try:
+                for f in mem_dir.iterdir():
+                    if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME:
+                        self._id_to_path[_memory_id(f)] = str(f)
+            except OSError:
+                continue
         for ns_dir in self._namespace_dirs():
-            for f in ns_dir.iterdir():
-                if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME:
-                    self._id_to_path[_memory_id(f)] = str(f)
+            try:
+                for f in ns_dir.iterdir():
+                    if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME:
+                        self._id_to_path[_memory_id(f)] = str(f)
+            except OSError:
+                continue
         self._cache_built = True
 
     def _invalidate_cache(self) -> None:
@@ -182,7 +196,10 @@ class FileSystemStore(MemoryStore):
             mem_dir = entry / "memory"
             if not mem_dir.is_dir():
                 continue
-            md_files = [f for f in mem_dir.iterdir() if f.suffix == ".md"]
+            try:
+                md_files = [f for f in mem_dir.iterdir() if f.suffix == ".md"]
+            except OSError:
+                continue
             count = sum(1 for f in md_files if f.name != MEMORY_INDEX_FILENAME)
             projects.append(
                 Project(
@@ -292,11 +309,16 @@ class FileSystemStore(MemoryStore):
 
         slug = re.sub(r"[^\w\-]", "-", memory.title.lower()).strip("-")[:60]
         path = target_dir / f"{slug}.md"
-        if path.exists():
-            counter = 2
-            while (target_dir / f"{slug}-{counter}.md").exists():
+        # Use O_EXCL to atomically claim the filename (no TOCTOU race)
+        counter = 1
+        while True:
+            try:
+                fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                break
+            except FileExistsError:
                 counter += 1
-            path = target_dir / f"{slug}-{counter}.md"
+                path = target_dir / f"{slug}-{counter}.md"
 
         fm: dict[str, str] = {"name": memory.title}
         if memory.description:
@@ -356,11 +378,18 @@ class FileSystemStore(MemoryStore):
         scope: str = "all",
         project: str | None = None,
         limit: int = 10,
+        registered_namespaces: set[str] | None = None,
     ) -> list[SearchResult]:
         terms = [re.sub(r"[^\w-]", "", t.lower()) for t in query.split() if len(t) >= 2]
         terms = [t for t in terms if t]
         if not terms:
             return []
+
+        # Precompile search patterns once instead of per-file
+        patterns = [
+            re.compile(r"(?<![a-zA-Z0-9])" + re.escape(t) + r"(?![a-zA-Z0-9])")
+            for t in terms
+        ]
 
         candidates: list[Memory] = []
         is_named_ns = scope not in ("all", "shared", "project")
@@ -372,7 +401,7 @@ class FileSystemStore(MemoryStore):
                 candidates.extend(self.read_project_memories(proj.id))
 
         if scope in ("all", "shared"):
-            for ns_dir in self._namespace_dirs():
+            for ns_dir in self._namespace_dirs(registered=registered_namespaces):
                 candidates.extend(self.read_shared_memories(ns_dir.name))
         elif is_named_ns:
             candidates.extend(self.read_shared_memories(scope))
@@ -380,7 +409,7 @@ class FileSystemStore(MemoryStore):
         results: list[SearchResult] = []
         for mem in candidates:
             searchable = f"{mem.title} {mem.description or ''} {mem.content}"
-            score, ctx = _score_text(searchable, terms)
+            score, ctx = _score_text(searchable, terms, patterns)
             if score > 0:
                 results.append(SearchResult(memory=mem, score=score, match_context=ctx))
 
@@ -436,11 +465,15 @@ class FileSystemStore(MemoryStore):
 
     # ── Internal ───────────────────────────────────────────────────────
 
-    def _namespace_dirs(self) -> list[Path]:
+    def _namespace_dirs(self, registered: set[str] | None = None) -> list[Path]:
+        """Return namespace directories. If registered is provided, only include those."""
         if not SHARED_DIR.is_dir():
             return []
-        return [
+        dirs = [
             d
             for d in sorted(SHARED_DIR.iterdir())
             if d.is_dir() and not d.name.startswith(".")
         ]
+        if registered is not None:
+            dirs = [d for d in dirs if d.name in registered]
+        return dirs

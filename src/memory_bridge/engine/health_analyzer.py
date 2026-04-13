@@ -76,12 +76,14 @@ class HealthAnalyzer:
             suggestions=suggestions,
         )
 
+    _DEDUP_LIMIT = 500
+
     def _find_duplicates(self, memories: list[Memory]) -> list[dict]:
         if len(memories) < 2:
             return []
 
         mem_trigrams: list[tuple[Memory, set[str]]] = []
-        for m in memories:
+        for m in memories[:self._DEDUP_LIMIT]:
             tg = _trigrams(m.content)
             if len(tg) >= 5:
                 mem_trigrams.append((m, tg))

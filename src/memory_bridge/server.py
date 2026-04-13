@@ -37,7 +37,7 @@ mcp = FastMCP("memory-bridge", instructions=_INSTRUCTIONS)
 
 _store = FileSystemStore()
 _ns = NamespaceManager()
-_retriever = Retriever(_store)
+_retriever = Retriever(_store, _ns)
 _promoter = Promoter(_store, _ns)
 _health = HealthAnalyzer(_store, _ns)
 
@@ -61,8 +61,7 @@ def search_memories(
         project: Limit to a specific project (name or id).
         limit: Max results (default 10).
     """
-    results = _retriever.search(query, scope=scope, project=project, limit=limit)
-    return _retriever.format_results(results)
+    return _retriever.search_and_format(query, scope=scope, project=project, limit=limit)
 
 
 # ── Tool 2: promote_memory ─────────────────────────────────────────────────
@@ -204,7 +203,7 @@ def sync_memory(
             )
             written = _store.write_memory(mem)
             results.append({"project": target, "status": "ok", "memory_id": written.id})
-        except OSError as e:
+        except (OSError, ValueError) as e:
             results.append({"project": target, "status": "error", "error": str(e)})
 
     return json.dumps(results, indent=2)
@@ -227,7 +226,8 @@ def get_memory_health(fix_indexes: bool = False) -> str:
         for p in _store.scan_projects():
             count = _store.rebuild_index(Path(p.memory_dir))
             fixed.append(f"{p.name}: {count} entries")
-        for ns_dir in _store._namespace_dirs():
+        registered = {ns.name for ns in _ns.list_all()}
+        for ns_dir in _store._namespace_dirs(registered=registered):
             count = _store.rebuild_index(ns_dir)
             fixed.append(f"ns:{ns_dir.name}: {count} entries")
         return "## Indexes Rebuilt\n\n" + "\n".join(f"- {f}" for f in fixed)

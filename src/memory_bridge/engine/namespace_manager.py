@@ -9,7 +9,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from memory_bridge.config import REGISTRY_FILE, SHARED_DIR
+from memory_bridge.config import MEMORY_INDEX_FILENAME, REGISTRY_FILE, SHARED_DIR
 from memory_bridge.models import NamespaceInfo
 
 
@@ -64,7 +64,7 @@ class NamespaceManager:
         for name, ns in data["namespaces"].items():
             ns_dir = SHARED_DIR / name
             mem_count = sum(
-                1 for f in ns_dir.iterdir() if f.suffix == ".md" and f.name != "MEMORY.md"
+                1 for f in ns_dir.iterdir() if f.suffix == ".md" and f.name != MEMORY_INDEX_FILENAME
             ) if ns_dir.is_dir() else 0
             result.append(NamespaceInfo(
                 name=name,
