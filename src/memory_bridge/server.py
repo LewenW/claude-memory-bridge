@@ -204,7 +204,10 @@ def sync_memory(
                 updated_at=now,
             )
             written = _store.write_memory(mem)
-            results.append({"project": target, "status": "ok", "memory_id": written.id})
+            entry = {"project": target, "status": "ok", "memory_id": written.id}
+            if written.index_full:
+                entry["warning"] = "MEMORY.md index full (200 lines). Run get_memory_health with fix_indexes=true."
+            results.append(entry)
         except (OSError, ValueError) as e:
             results.append({"project": target, "status": "error", "error": str(e)})
 

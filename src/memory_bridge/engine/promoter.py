@@ -33,9 +33,11 @@ class Promoter:
         if not self._ns.exists(target_namespace):
             self._ns.create(target_namespace, description="Auto-created for promotion")
 
+        registered = {n.name for n in self._ns.list_all()}
+
         source_mem: Optional[Memory] = None
         if source_memory_id:
-            source_mem = self._store.get_memory(source_memory_id)
+            source_mem = self._store.get_memory(source_memory_id, registered_namespaces=registered)
             if source_mem:
                 content = content or source_mem.content
                 title = title or source_mem.title
@@ -62,12 +64,15 @@ class Promoter:
 
         removed = False
         if remove_source and source_mem:
-            removed = self._store.delete_memory(source_mem.id)
+            removed = self._store.delete_memory(source_mem.id, registered_namespaces=registered)
 
-        return {
+        result = {
             "promoted_memory_id": written.id,
             "namespace": target_namespace,
             "file_path": written.file_path,
             "source_removed": removed,
             "source_project": source_project,
         }
+        if written.index_full:
+            result["warning"] = "MEMORY.md index is full (200 lines). Run get_memory_health with fix_indexes=true to rebuild."
+        return result

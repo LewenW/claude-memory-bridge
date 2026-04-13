@@ -344,11 +344,14 @@ class FileSystemStore(MemoryStore):
 
         memory.file_path = str(path)
         memory.id = _memory_id(path)
-        self._update_index(target_dir, memory)
+        memory.index_full = not self._update_index(target_dir, memory)
         self._invalidate_cache()
         return memory
 
-    def _update_index(self, mem_dir: Path, memory: Memory) -> None:
+    _INDEX_LINE_LIMIT = 200
+
+    def _update_index(self, mem_dir: Path, memory: Memory) -> bool:
+        """Add memory to MEMORY.md index. Returns False if index is full (200 lines)."""
         index = mem_dir / MEMORY_INDEX_FILENAME
         slug = Path(memory.file_path).name
         entry = f"- [{memory.title}]({slug})"
@@ -358,19 +361,19 @@ class FileSystemStore(MemoryStore):
         if index.exists():
             existing = index.read_text(encoding="utf-8")
             if f"]({slug})" in existing:
-                return
+                return True
             lines = existing.rstrip().split("\n")
-            # Claude truncates MEMORY.md after 200 lines
-            if len(lines) >= 200:
-                return
+            if len(lines) >= self._INDEX_LINE_LIMIT:
+                return False
             text = existing.rstrip() + "\n" + entry + "\n"
         else:
             text = entry + "\n"
 
         _atomic_write(index, text)
+        return True
 
-    def delete_memory(self, memory_id: str) -> bool:
-        mem = self.get_memory(memory_id)
+    def delete_memory(self, memory_id: str, registered_namespaces: set[str] | None = None) -> bool:
+        mem = self.get_memory(memory_id, registered_namespaces=registered_namespaces)
         if not mem:
             return False
         path = Path(mem.file_path)

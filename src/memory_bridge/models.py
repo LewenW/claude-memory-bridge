@@ -20,6 +20,7 @@ class Memory:
     description: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    index_full: bool = False
 
 
 @dataclass(slots=True)
