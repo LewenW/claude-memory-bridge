@@ -51,9 +51,9 @@ In a Claude Code or Cowork session:
 
 | Client | Auto | Manual |
 |--------|------|--------|
-| Claude Code (CLI) | ✅ | ✅ |
-| Cowork — Code mode | ✅ | ✅ |
-| Cowork — Cowork mode | ❌ | ✅ mention "memory-bridge" or tool name |
+| Claude Code (CLI) | Yes | Yes |
+| Cowork — Code mode | Yes | Yes |
+| Cowork — Cowork mode | :( | Yes mention "memory-bridge" or tool name |
 
 Cowork mode loads the MCP tools but doesn't inject server `instructions`, so Claude won't use them unprompted. Workaround: say "use search_memories" or mention "memory-bridge". This will work automatically once Cowork supports MCP instructions.
 
