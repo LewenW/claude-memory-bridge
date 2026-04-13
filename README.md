@@ -2,14 +2,7 @@
 
 Cross-project memory sharing for Claude Code and Cowork. Stop teaching Claude the same thing twice.
 
-```bash
-pip install mcp
-python scripts/install.py    # auto-detects Cowork desktop + Claude Code CLI
-```
-
-## What it solves
-
-Claude's memory is project-isolated. Teach it "use pnpm" in project A, repeat yourself in project B. memory-bridge adds a shared layer — **namespaces** — between global and project scope.
+Claude's memory is project-isolated. Teach it "use pnpm" in project A, repeat yourself in project B. memory-bridge adds a shared layer — **namespaces** — between global and project scope. Solves [#36561](https://github.com/anthropics/claude-code/issues/36561) and [#39195](https://github.com/anthropics/claude-code/issues/39195).
 
 ```
 Global      ~/.claude/CLAUDE.md                      (Claude native)
@@ -17,7 +10,14 @@ Namespace   ~/.claude/shared-memory/<ns>/*.md         (memory-bridge)
 Project     ~/.claude/projects/<proj>/memory/*.md     (Claude native)
 ```
 
-Solves [#36561](https://github.com/anthropics/claude-code/issues/36561) and [#39195](https://github.com/anthropics/claude-code/issues/39195).
+## Install
+
+```bash
+git clone https://github.com/LewenW/claude-memory-bridge.git
+cd claude-memory-bridge
+pip install mcp
+python scripts/install.py    # auto-detects Cowork desktop + Claude Code CLI
+```
 
 ## Tools
 
@@ -32,18 +32,19 @@ Solves [#36561](https://github.com/anthropics/claude-code/issues/36561) and [#39
 
 ## Quick start
 
+In a Claude Code or Cowork session:
+
 ```
-# Create a shared namespace
-> manage_namespaces action=create namespace=frontend description="React conventions"
+/memory-bridge:namespaces
+# action=create, namespace=frontend, description="React conventions"
 
-# Share a memory
-> promote_memory content="Use pnpm, not npm" target_namespace=frontend
+/memory-bridge:promote
+# content="Use pnpm, not npm", target_namespace=frontend
 
-# Subscribe a project
-> manage_namespaces action=subscribe namespace=frontend project=dashboard
+/memory-bridge:namespaces
+# action=subscribe, namespace=frontend, project=dashboard
 
-# Search across everything
-> search_memories query="pnpm"
+/memory-bridge:search pnpm
 ```
 
 ## Client compatibility
@@ -64,10 +65,9 @@ Cowork mode loads the MCP tools but doesn't inject server `instructions`, so Cla
 - Word-boundary TF-IDF search scoring
 - Trigram Jaccard similarity for duplicate detection (threshold 0.45)
 
-## Install / uninstall
+## Uninstall
 
 ```bash
-python scripts/install.py            # install to all detected clients
 python scripts/install.py --check    # show current config
 python scripts/install.py --remove   # uninstall from all clients
 ```
